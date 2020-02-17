@@ -48,6 +48,11 @@ class QueryResult(object):
         if isinstance(response[-1], ResponseError):
             raise response[-1]
 
+        if len(response) is 1:
+            self.parse_statistics(response[0])
+        else:
+            self.parse_statistics(response[-1])  # Last element.
+
     async def parse_results(self, raw_result_set):
         self.header = self.parse_header(raw_result_set)
 

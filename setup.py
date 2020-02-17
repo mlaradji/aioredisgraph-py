@@ -10,12 +10,12 @@ requirements = list(map(str.strip, open("requirements.txt").readlines()))
 
 
 setup(
-    name='redisgraph',
-    version='2.1.2',
-    description='RedisGraph Python Client',
+    name='aioredisgraph',
+    version='0.0.1',
+    description='Asynchronous RedisGraph Python Client',
     long_description=read_all("README.md"),
     long_description_content_type='text/markdown',
-    url='https://github.com/RedisGraph/redisgraph-py',
+    url='https://github.com/mlaradji/aioredisgraph-py/',
     packages=find_packages(),
     install_requires=requirements,
     classifiers=[
@@ -25,7 +25,7 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Topic :: Database'
     ],
-    keywords='Redis Graph Extension',
-    author='RedisLabs',
-    author_email='oss@redislabs.com'
+    keywords='Asynchronous Redis Graph Extension',
+    author='Mohamed Laradji',
+    author_email='malaradji@gmail.com'
 )

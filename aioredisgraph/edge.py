@@ -1,4 +1,4 @@
-from redisgraph import Node
+from aioredisgraph import Node
 
 from .util import *
 

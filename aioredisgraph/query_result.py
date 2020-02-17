@@ -39,7 +39,7 @@ class QueryResult(object):
     INDICES_DELETED = "Indices deleted"
     INTERNAL_EXECUTION_TIME = "internal execution time"
 
-    async def __init__(self, graph, response):
+    def __init__(self, graph, response):
         self.graph = graph
         self.header = []
         self.result_set = []
@@ -47,14 +47,6 @@ class QueryResult(object):
         # If we encountered a run-time error, the last response element will be an exception.
         if isinstance(response[-1], ResponseError):
             raise response[-1]
-
-        if len(response) is 1:
-            await self.parse_statistics(response[0])
-        else:
-            await asyncio.gather(
-                self.parse_results(response),
-                self.parse_statistics(response[-1]),  # Last element.
-            )
 
     async def parse_results(self, raw_result_set):
         self.header = self.parse_header(raw_result_set)
@@ -187,7 +179,7 @@ class QueryResult(object):
         elif scalar_type == ResultSetScalarTypes.VALUE_ARRAY:
             # array variable is introduced only for readability
             scalar = array = value
-            scalar = await asyncio.gather(map(self.parse_scalar, array))
+            scalar = await asyncio.gather(*map(self.parse_scalar, array))
 
         elif scalar_type == ResultSetScalarTypes.VALUE_NODE:
             scalar = await self.parse_node(value)

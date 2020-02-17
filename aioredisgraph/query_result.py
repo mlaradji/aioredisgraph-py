@@ -1,8 +1,11 @@
+import asyncio
+
+from prettytable import PrettyTable
+from redis import ResponseError
+
 from .node import Node
 from .edge import Edge
 from .path import Path
-from prettytable import PrettyTable
-from redis import ResponseError
 
 
 class ResultSetColumnTypes(object):
@@ -24,18 +27,19 @@ class ResultSetScalarTypes(object):
     VALUE_NODE = 8
     VALUE_PATH = 9
 
+
 class QueryResult(object):
-    LABELS_ADDED = 'Labels added'
-    NODES_CREATED = 'Nodes created'
-    NODES_DELETED = 'Nodes deleted'
-    RELATIONSHIPS_DELETED = 'Relationships deleted'
-    PROPERTIES_SET = 'Properties set'
-    RELATIONSHIPS_CREATED = 'Relationships created'
+    LABELS_ADDED = "Labels added"
+    NODES_CREATED = "Nodes created"
+    NODES_DELETED = "Nodes deleted"
+    RELATIONSHIPS_DELETED = "Relationships deleted"
+    PROPERTIES_SET = "Properties set"
+    RELATIONSHIPS_CREATED = "Relationships created"
     INDICES_CREATED = "Indices created"
     INDICES_DELETED = "Indices deleted"
-    INTERNAL_EXECUTION_TIME = 'internal execution time'
+    INTERNAL_EXECUTION_TIME = "internal execution time"
 
-    def __init__(self, graph, response):
+    async def __init__(self, graph, response):
         self.graph = graph
         self.header = []
         self.result_set = []
@@ -45,26 +49,36 @@ class QueryResult(object):
             raise response[-1]
 
         if len(response) is 1:
-            self.parse_statistics(response[0])
+            await self.parse_statistics(response[0])
         else:
-            self.parse_results(response)
-            self.parse_statistics(response[-1])  # Last element.
+            await asyncio.gather(
+                self.parse_results(response),
+                self.parse_statistics(response[-1]),  # Last element.
+            )
 
-    def parse_results(self, raw_result_set):
+    async def parse_results(self, raw_result_set):
         self.header = self.parse_header(raw_result_set)
 
         # Empty header.
         if len(self.header) == 0:
             return
 
-        self.result_set = self.parse_records(raw_result_set)
+        self.result_set = await self.parse_records(raw_result_set)
 
     def parse_statistics(self, raw_statistics):
         self.statistics = {}
 
-        stats = [self.LABELS_ADDED, self.NODES_CREATED, self.PROPERTIES_SET, self.RELATIONSHIPS_CREATED,
-                 self.NODES_DELETED, self.RELATIONSHIPS_DELETED, self.INDICES_CREATED, self.INDICES_DELETED,
-                 self.INTERNAL_EXECUTION_TIME]
+        stats = [
+            self.LABELS_ADDED,
+            self.NODES_CREATED,
+            self.PROPERTIES_SET,
+            self.RELATIONSHIPS_CREATED,
+            self.NODES_DELETED,
+            self.RELATIONSHIPS_DELETED,
+            self.INDICES_CREATED,
+            self.INDICES_DELETED,
+            self.INTERNAL_EXECUTION_TIME,
+        ]
         for s in stats:
             v = self._get_value(s, raw_statistics)
             if v is not None:
@@ -75,35 +89,36 @@ class QueryResult(object):
         header = raw_result_set[0]
         return header
 
-    def parse_records(self, raw_result_set):
+    async def parse_records(self, raw_result_set):
         records = []
         result_set = raw_result_set[1]
         for row in result_set:
             record = []
             for idx, cell in enumerate(row):
                 if self.header[idx][0] == ResultSetColumnTypes.COLUMN_SCALAR:
-                    record.append(self.parse_scalar(cell))
+                    record.append(await self.parse_scalar(cell))
                 elif self.header[idx][0] == ResultSetColumnTypes.COLUMN_NODE:
-                    record.append(self.parse_node(cell))
+                    record.append(await self.parse_node(cell))
                 elif self.header[idx][0] == ResultSetColumnTypes.COLUMN_RELATION:
-                    record.append(self.parse_edge(cell))
+                    record.append(await self.parse_edge(cell))
                 else:
                     print("Unknown column type.\n")
             records.append(record)
 
         return records
 
-    def parse_entity_properties(self, props):
+    async def parse_entity_properties(self, props):
         # [[name, value type, value] X N]
         properties = {}
         for prop in props:
-            prop_name = self.graph.get_property(prop[0])
-            prop_value = self.parse_scalar(prop[1:])
+            prop_name, prop_value = await asyncio.gather(
+                self.graph.get_property(prop[0]), self.parse_scalar(prop[1:])
+            )
             properties[prop_name] = prop_value
 
         return properties
 
-    def parse_node(self, cell):
+    async def parse_node(self, cell):
         # Node ID (integer),
         # [label string offset (integer)],
         # [[name, value type, value] X N]
@@ -111,11 +126,11 @@ class QueryResult(object):
         node_id = int(cell[0])
         label = None
         if len(cell[1]) != 0:
-            label = self.graph.get_label(cell[1][0])
-        properties = self.parse_entity_properties(cell[2])
+            label = await self.graph.get_label(cell[1][0])
+        properties = await self.parse_entity_properties(cell[2])
         return Node(node_id=node_id, label=label, properties=properties)
 
-    def parse_edge(self, cell):
+    async def parse_edge(self, cell):
         # Edge ID (integer),
         # reltype string offset (integer),
         # src node ID offset (integer),
@@ -123,18 +138,22 @@ class QueryResult(object):
         # [[name, value, value type] X N]
 
         edge_id = int(cell[0])
-        relation = self.graph.get_relation(cell[1])
+        relation, properties = await asyncio.gather(
+            self.graph.get_relation(cell[1]), self.parse_entity_properties(cell[4])
+        )
         src_node_id = int(cell[2])
         dest_node_id = int(cell[3])
-        properties = self.parse_entity_properties(cell[4])
-        return Edge(src_node_id, relation, dest_node_id, edge_id=edge_id, properties=properties)
+        return Edge(
+            src_node_id, relation, dest_node_id, edge_id=edge_id, properties=properties
+        )
 
-    def parse_path(self, cell):
-        nodes = self.parse_scalar(cell[0])
-        edges = self.parse_scalar(cell[1])
+    async def parse_path(self, cell):
+        nodes, edges = await asyncio.gather(
+            self.parse_scalar(cell[0]), self.parse_scalar(cell[1])
+        )
         return Path(nodes, edges)
 
-    def parse_scalar(self, cell):
+    async def parse_scalar(self, cell):
         scalar_type = int(cell[0])
         value = cell[1]
         scalar = None
@@ -168,17 +187,16 @@ class QueryResult(object):
         elif scalar_type == ResultSetScalarTypes.VALUE_ARRAY:
             # array variable is introduced only for readability
             scalar = array = value
-            for i in range(len(array)):
-                scalar[i] = self.parse_scalar(array[i])
+            scalar = await asyncio.gather(map(self.parse_scalar, array))
 
         elif scalar_type == ResultSetScalarTypes.VALUE_NODE:
-            scalar = self.parse_node(value)
+            scalar = await self.parse_node(value)
 
         elif scalar_type == ResultSetScalarTypes.VALUE_EDGE:
-            scalar = self.parse_edge(value)
+            scalar = await self.parse_edge(value)
 
         elif scalar_type == ResultSetScalarTypes.VALUE_PATH:
-            scalar = self.parse_path(value)
+            scalar = await self.parse_path(value)
 
         elif scalar_type == ResultSetScalarTypes.VALUE_UNKNOWN:
             print("Unknown scalar type\n")
@@ -209,9 +227,9 @@ class QueryResult(object):
                 tbl.add_row(record)
 
             if len(self.result_set) == 0:
-                tbl.add_row(['No data returned.'])
+                tbl.add_row(["No data returned."])
 
-            print(str(tbl) + '\n')
+            print(str(tbl) + "\n")
 
         for stat in self.statistics:
             print("%s %s" % (stat, self.statistics[stat]))
@@ -225,7 +243,7 @@ class QueryResult(object):
             if isinstance(stat, bytes):
                 stat = stat.decode()
             if prop in stat:
-                return float(stat.split(': ')[1].split(' ')[0])
+                return float(stat.split(": ")[1].split(" ")[0])
 
         return None
 

@@ -17,12 +17,12 @@ class Graph(object):
         self._properties = []        # List of properties.
         self._relationshipTypes = [] # List of relation types.
 
-    def get_label(self, idx):
+    async def get_label(self, idx):
         try:
             label = self._labels[idx]
         except IndexError:
             # Refresh graph labels.
-            lbls = self.labels()
+            lbls = await self.labels()
             # Unpack data.
             self._labels = [None] * len(lbls)
             for i, l in enumerate(lbls):
@@ -31,12 +31,12 @@ class Graph(object):
             label = self._labels[idx]
         return label
 
-    def get_relation(self, idx):
+    async def get_relation(self, idx):
         try:
             relationshipType = self._relationshipTypes[idx]
         except IndexError:
             # Refresh graph relations.
-            rels = self.relationshipTypes()
+            rels = await self.relationshipTypes()
             # Unpack data.
             self._relationshipTypes = [None] * len(rels)
             for i, r in enumerate(rels):
@@ -45,12 +45,12 @@ class Graph(object):
             relationshipType = self._relationshipTypes[idx]
         return relationshipType
 
-    def get_property(self, idx):
+    async def get_property(self, idx):
         try:
             propertie = self._properties[idx]
         except IndexError:
             # Refresh properties.
-            props = self.propertyKeys()
+            props = await self.propertyKeys()
             # Unpack data.
             self._properties = [None] * len(props)
             for i, p in enumerate(props):
@@ -168,11 +168,11 @@ class Graph(object):
 
         return self.query(q)
 
-    def labels(self):
-        return self.call_procedure("db.labels").result_set
+    async def labels(self):
+        return (await self.call_procedure("db.labels")).result_set
 
-    def relationshipTypes(self):
-        return self.call_procedure("db.relationshipTypes").result_set
+    async def relationshipTypes(self):
+        return (await self.call_procedure("db.relationshipTypes")).result_set
 
-    def propertyKeys(self):
-        return self.call_procedure("db.propertyKeys").result_set
+    async def propertyKeys(self):
+        return (await self.call_procedure("db.propertyKeys")).result_set

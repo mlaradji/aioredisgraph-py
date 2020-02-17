@@ -95,11 +95,11 @@ class Graph(object):
 
         return self.query(query)
 
-    def flush(self):
+    async def flush(self):
         """
         Commit the graph and reset the edges and nodes to zero length
         """
-        self.commit()
+        await self.commit()
         self.nodes = {}
         self.edges = []
 
@@ -117,7 +117,7 @@ class Graph(object):
             params_header += str(key) + "=" + str(value) + " "
         return params_header
 
-    def query(self, q, params=None):
+    async def query(self, q, params=None):
         """
         Executes a query against the graph.
         """
@@ -127,25 +127,25 @@ class Graph(object):
         statistics = None
         result_set = None
 
-        response = self.redis_con.execute_command("GRAPH.QUERY", self.name, q, "--compact")
+        response = await self.redis_con.execute("GRAPH.QUERY", self.name, q, "--compact")
         return QueryResult(self, response)
 
     def _execution_plan_to_string(self, plan):
         return "\n".join(plan)
 
-    def execution_plan(self, query):
+    async def execution_plan(self, query):
         """
         Get the execution plan for given query,
         GRAPH.EXPLAIN returns an array of operations.
         """
-        plan = self.redis_con.execute_command("GRAPH.EXPLAIN", self.name, query)
+        plan = await self.redis_con.execute("GRAPH.EXPLAIN", self.name, query)
         return self._execution_plan_to_string(plan)
 
-    def delete(self):
+    async def delete(self):
         """
         Deletes graph.
         """
-        return self.redis_con.execute_command("GRAPH.DELETE", self.name)
+        return await self.redis_con.execute("GRAPH.DELETE", self.name)
     
     def merge(self, pattern):
         """
